@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Traffic Rider - Mobil Uyumlu</title>
+    <style>
+        :root {
+            --road-color: #3a3a3a;
+            --grass-color: #2e7d32;
+            --line-color: rgba(255, 255, 255, 0.8);
+        }
+
+        body {
+            margin: 0;
+            height: 100vh;
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none; /* Scrollu ləğv etmək üçün */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%; /* Mobil cihazın bütün eni */
+            max-width: 500px; /* Maksimum eni məhdudlaşdırırıq */
+            height: 100vh; /* Mobil cihazın bütün hündürlüyü */
+            background-color: var(--road-color);
+            overflow: hidden;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            border-left: 15px solid var(--grass-color);
+            border-right: 15px solid var(--grass-color);
+        }
+
+        /* YOL VƏ XƏTLƏR ƏVVƏLKİ KİMİ QALIR */
+        #road {
+            position: absolute; width: 100%; height: 100%;
+        }
+
+        .road-line {
+            position: absolute; width: 8px; height: 120px;
+            background: var(--line-color); left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #line-double-left { left: calc(50% - 6px); background: #ffeb3b; width: 4px; height: 100%; }
+        #line-double-right { left: calc(50% + 6px); background: #ffeb3b; width: 4px; height: 100%; }
+        #line-dashed-left { left: 25%; width: 6px; background: transparent; border-left: 6px dashed rgba(255,255,255,0.4); height: 100%; }
+        #line-dashed-right { left: 75%; width: 6px; background: transparent; border-left: 6px dashed rgba(255,255,255,0.4); height: 100%; }
+
+        /* MAŞINLAR */
+        .car {
+            position: absolute;
+            width: 50px; 
+            height: 90px;
+            z-index: 10;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-image: url('maşın.png'); 
+            transition: transform 0.05s; /* Mobil dönmə üçün sürətli keçid */
+        }
+
+        #player-car {
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .enemy-car {
+            z-index: 5;
+        }
+
+        .enemy-car.opposite {
+            transform: rotate(180deg);
+        }
+
+        /* UI ELEMENTLƏRİ */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 100;
+        }
+
+        .hud-panel {
+            position: absolute;
+            background: rgba(0,0,0,0.6);
+            padding: 8px 15px;
+            border-radius: 20px;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-family: monospace;
+        }
+
+        #score-box { top: 20px; left: 20px; color: #ffeb3b; }
+        #high-score-box { top: 55px; left: 20px; font-size: 14px; color: #aaa; }
+        #speed-box { top: 20px; right: 20px; font-size: 24px; }
+        
+        #speed-bar {
+            position: absolute; top: 60px; right: 20px;
+            width: 100px; max-width: 20%; height: 6px; background: #333;
+            border-radius: 3px; overflow: hidden;
+        }
+        #speed-fill {
+            width: 0%; height: 100%;
+            background: linear-gradient(90deg, lime, yellow, red);
+        }
+
+        /* TOXUNMA NƏZARƏTLƏRİ (Mobil) */
+        .touch-control {
+            position: absolute;
+            bottom: 0;
+            height: 40%; 
+            z-index: 150;
+            pointer-events: auto; /* İstifadəçinin toxunmasını qəbul etsin */
+            opacity: 0; /* Görünməz edirik */
+        }
+
+        /* Sol/Sağ Hərəkət Sahələri */
+        #touch-left { left: 0; width: 35%; }
+        #touch-right { right: 0; width: 35%; }
+
+        /* Qaz/Tormoz Sahələri */
+        #touch-accelerate { bottom: 0; left: 50%; transform: translateX(-50%); width: 30%; height: 20%; background: rgba(0,255,0,0.2); }
+        #touch-brake { bottom: 20%; left: 50%; transform: translateX(-50%); width: 30%; height: 20%; background: rgba(255,0,0,0.2); }
+
+        /* Qalan stillər əvvəlki kimidir */
+        .notification {
+            position: absolute; left: 50%; top: 40%;
+            transform: translate(-50%, -50%);
+            font-size: 24px; font-weight: 900; color: #ffeb3b;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+            opacity: 0; transition: opacity 0.3s, top 0.3s;
+        }
+
+        #game-over-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: none;
+            flex-direction: column; justify-content: center; align-items: center;
+            z-index: 200; pointer-events: auto;
+        }
+
+        h1 { color: #ff1744; margin-bottom: 10px; font-size: 40px; }
+        .stat-row { color: white; font-size: 20px; margin: 5px 0; }
+        
+        button {
+            margin-top: 30px; padding: 15px 40px;
+            background: #2196F3; color: white; border: none;
+            border-radius: 30px; font-size: 20px; font-weight: bold;
+            cursor: pointer; transition: transform 0.1s, background 0.2s;
+        }
+
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-3px, 0, 0); }
+            20%, 80% { transform: translate3d(6px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-8px, 0, 0); }
+            40%, 60% { transform: translate3d(8px, 0, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="road">
+            <div id="line-dashed-left"></div>
+            <div id="line-double-left"></div>
+            <div id="line-double-right"></div>
+            <div id="line-dashed-right"></div>
+        </div>
+
+        <div id="player-car" class="car"></div>
+
+        <div id="touch-left" class="touch-control"></div>
+        <div id="touch-right" class="touch-control"></div>
+        <div id="touch-accelerate" class="touch-control"></div>
+        <div id="touch-brake" class="touch-control"></div>
+
+        <div id="ui-layer">
+            <div id="score-box" class="hud-panel">XAL: 0</div>
+            <div id="high-score-box" class="hud-panel">REKORD: 0</div>
+            <div id="speed-box" class="hud-panel">0 KM/H</div>
+            <div id="speed-bar"><div id="speed-fill"></div></div>
+            <div id="notification" class="notification">YAXIN KEÇİŞ!</div>
+        </div>
+
+        <div id="game-over-screen">
+            <h1>QƏZA!</h1>
+            <div class="stat-row">Sürət: <span id="end-speed" style="color: #ffeb3b">0</span> KM/H</div>
+            <div class="stat-row">Xal: <span id="end-score">0</span></div>
+            <div class="stat-row" style="font-size: 16px; color: #888">Rekord: <span id="end-high">0</span></div>
+            <button id="restart-btn">YENİDƏN BAŞLA</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            const container = document.getElementById('game-container');
+            const playerCar = document.getElementById('player-car');
+            const scoreEl = document.getElementById('score-box');
+            const highScoreEl = document.getElementById('high-score-box');
+            const speedEl = document.getElementById('speed-box');
+            const speedFill = document.getElementById('speed-fill');
+            const gameOverScreen = document.getElementById('game-over-screen');
+            const notificationEl = document.getElementById('notification');
+            const road = document.getElementById('road');
+            const restartBtn = document.getElementById('restart-btn');
+
+            const GAME_WIDTH = 500;
+            const CAR_WIDTH = 50;
+            const CAR_HEIGHT = 90;
+            const LANE_WIDTH = GAME_WIDTH / 4;
+            
+            const ACCELERATION = 0.6;
+            const BRAKING = 1.2;
+            const FRICTION = 0.2;
+            const MAX_SPEED = 180;
+            const TURN_SPEED = 6;
+            
+            let state = {
+                running: false,
+                speed: 0,
+                x: GAME_WIDTH / 2 - CAR_WIDTH / 2,
+                score: 0,
+                highScore: localStorage.getItem('trafficRiderHigh') || 0
+            };
+
+            let keys = {};
+            let enemies = [];
+            let roadLines = [];
+            let lastTime = 0;
+            let enemySpawnTimer = 0;
+
+            // DOM Elementləri
+            const touchLeft = document.getElementById('touch-left');
+            const touchRight = document.getElementById('touch-right');
+            const touchAccelerate = document.getElementById('touch-accelerate');
+            const touchBrake = document.getElementById('touch-brake');
+
+            // --- KLAVİATURA VƏ TOXUNMA NƏZARƏTİ ƏLAQƏSİ ---
+            
+            function setKey(key, isPressed) {
+                keys[key.toLowerCase()] = isPressed;
+            }
+
+            // Klaviatura Nəzarətləri
+            document.addEventListener('keydown', e => setKey(e.key, true));
+            document.addEventListener('keyup', e => setKey(e.key, false));
+
+            // Toxunma Nəzarətləri
+            // Toxunma başlanğıcı
+            touchLeft.addEventListener('touchstart', (e) => { e.preventDefault(); setKey('a', true); });
+            touchRight.addEventListener('touchstart', (e) => { e.preventDefault(); setKey('d', true); });
+            touchAccelerate.addEventListener('touchstart', (e) => { e.preventDefault(); setKey('w', true); });
+            touchBrake.addEventListener('touchstart', (e) => { e.preventDefault(); setKey('s', true); });
+            
+            // Toxunma bitməsi (Barmaq çəkiləndə)
+            touchLeft.addEventListener('touchend', (e) => { e.preventDefault(); setKey('a', false); });
+            touchRight.addEventListener('touchend', (e) => { e.preventDefault(); setKey('d', false); });
+            touchAccelerate.addEventListener('touchend', (e) => { e.preventDefault(); setKey('w', false); });
+            touchBrake.addEventListener('touchend', (e) => { e.preventDefault(); setKey('s', false); });
+            
+            // Touch Move hadisələrini ləğv etmək
+            document.querySelectorAll('.touch-control').forEach(el => {
+                el.addEventListener('touchmove', (e) => e.preventDefault());
+            });
+
+            // Ümumi Funksiyalar
+            restartBtn.addEventListener('click', startGame);
+            highScoreEl.innerText = `REKORD: ${Math.floor(state.highScore)}`;
+
+            function initRoadLines() {
+                for(let i=0; i<6; i++) {
+                    let div = document.createElement('div');
+                    div.className = 'road-line';
+                    div.style.top = (i * 150) + 'px';
+                    road.appendChild(div);
+                    roadLines.push({ el: div, y: i * 150 });
+                }
+            }
+            initRoadLines();
+
+            function startGame() {
+                if (state.running) return;
+                state.running = true;
+                state.speed = 0;
+                state.score = 0;
+                // Oyunun enini götürüb, 4 zolağın 3-cü zolağının ortasına yerləşdiririk.
+                let currentContainerWidth = container.offsetWidth;
+                let currentLaneWidth = currentContainerWidth / 4;
+                state.x = currentLaneWidth * 2.5 - CAR_WIDTH / 2;
+                
+                enemies.forEach(e => e.el.remove());
+                enemies = [];
+                gameOverScreen.style.display = 'none';
+                container.classList.remove('shake');
+                playerCar.style.transform = `rotate(0deg)`;
+                
+                lastTime = performance.now();
+                requestAnimationFrame(gameLoop);
+            }
+
+            function gameLoop(time) {
+                if (!state.running) return;
+                const delta = Math.min((time - lastTime) / 16, 5);
+                lastTime = time;
+
+                updatePhysics(delta);
+                updateRoad(delta);
+                updateEnemies(delta);
+                updateUI();
+
+                requestAnimationFrame(gameLoop);
+            }
+
+            function updatePhysics(delta) {
+                // Sürətlənmə
+                if (keys['w'] || keys['arrowup']) state.speed += ACCELERATION * delta;
+                else if (keys['s'] || keys['arrowdown']) state.speed -= BRAKING * delta;
+                else state.speed -= FRICTION * delta;
+
+                if (state.speed < 0) state.speed = 0;
+                if (state.speed > MAX_SPEED) state.speed = MAX_SPEED;
+
+                // Hərəkət (Dönmə)
+                let currentContainerWidth = container.offsetWidth;
+                let currentRoadWidth = currentContainerWidth - 30; // 15px kənarlıq
+                const minX = 15;
+                const maxX = currentContainerWidth - CAR_WIDTH - 15;
+                
+                if (state.speed > 1) {
+                    let turnAmt = TURN_SPEED * delta;
+                    if (keys['a'] || keys['arrowleft']) state.x -= turnAmt;
+                    if (keys['d'] || keys['arrowright']) state.x += turnAmt;
+                    
+                    let tilt = 0;
+                    if (keys['a'] || keys['arrowleft']) tilt = -5;
+                    if (keys['d'] || keys['arrowright']) tilt = 5;
+                    playerCar.style.transform = `rotate(${tilt}deg)`;
+                } else {
+                    playerCar.style.transform = `rotate(0deg)`;
+                }
+
+                // Sərhədlər
+                if (state.x < minX) { state.x = minX; state.speed *= 0.9; }
+                if (state.x > maxX) { state.x = maxX; state.speed *= 0.9; }
+
+                playerCar.style.left = state.x + 'px';
+
+                if (state.speed > 20) {
+                    state.score += (state.speed * 0.005) * delta;
+                }
+            }
+
+            function updateRoad(delta) {
+                let moveAmount = state.speed * 0.15 * delta;
+                roadLines.forEach(line => {
+                    line.y += moveAmount;
+                    if (line.y > 800) line.y -= 900;
+                    line.el.style.top = line.y + 'px';
+                    line.el.style.opacity = Math.max(0.3, 1 - (state.speed / MAX_SPEED));
+                });
+            }
+
+            function updateEnemies(delta) {
+                enemySpawnTimer -= delta;
+                if (enemySpawnTimer <= 0) {
+                    spawnEnemy();
+                    enemySpawnTimer = 100 - (state.speed / 3); 
+                    if (enemySpawnTimer < 30) enemySpawnTimer = 30;
+                }
+
+                enemies.forEach((enemy, index) => {
+                    let moveSpeed = state.speed * 0.15;
+                    if (enemy.isOpposite) moveSpeed += 8 * delta;
+                    else moveSpeed -= 3 * delta;
+                    
+                    enemy.y += moveSpeed;
+                    enemy.el.style.top = enemy.y + 'px';
+
+                    if (checkCollision(enemy)) {
+                        gameOver(enemy.isOpposite);
+                    }
+
+                    if (!enemy.passed && enemy.y > 600 && enemy.y < 750) {
+                        let distX = Math.abs(state.x - enemy.x);
+                        if (distX < CAR_WIDTH + 35 && distX > CAR_WIDTH - 5) {
+                            showNotification("YAXIN KEÇİŞ! +100");
+                            state.score += 100;
+                            enemy.passed = true;
+                        }
+                    }
+
+                    if (enemy.y > 900) {
+                        enemy.el.remove();
+                        enemies.splice(index, 1);
+                    }
+                });
+            }
+
+            function spawnEnemy() {
+                let div = document.createElement('div');
+                div.className = 'enemy-car car';
+                
+                let currentContainerWidth = container.offsetWidth;
+                let currentLaneWidth = currentContainerWidth / 4;
+                
+                let lane = Math.floor(Math.random() * 4);
+                let isOpposite = lane < 2; // İlk iki zolaq qarşıdan gəlir
+                
+                // Məqsəd zolağının mərkəzi
+                let xCenter = (lane * currentLaneWidth) + (currentLaneWidth / 2);
+                let xPos = xCenter - CAR_WIDTH/2; 
+                
+                // Sərhədləri aşmamaq üçün son yoxlama
+                const minX = 15;
+                const maxX = currentContainerWidth - CAR_WIDTH - 15;
+                xPos = Math.min(Math.max(xPos, minX), maxX);
+
+                div.style.left = xPos + 'px';
+                
+                if (isOpposite) {
+                    div.classList.add('opposite');
+                }
+
+                road.appendChild(div);
+                enemies.push({ el: div, x: xPos, y: -150, isOpposite: isOpposite, passed: false });
+            }
+
+            function checkCollision(enemy) {
+                let buffer = 10;
+                return (
+                    state.x < enemy.x + CAR_WIDTH - buffer &&
+                    state.x + CAR_WIDTH > enemy.x + buffer &&
+                    650 < enemy.y + CAR_HEIGHT - buffer &&
+                    650 + CAR_HEIGHT > enemy.y + buffer
+                );
+            }
+
+            function showNotification(text) {
+                notificationEl.innerText = text;
+                notificationEl.style.opacity = 1;
+                notificationEl.style.top = '30%';
+                setTimeout(() => {
+                    notificationEl.style.opacity = 0;
+                    notificationEl.style.top = '40%';
+                }, 800);
+            }
+
+            function updateUI() {
+                scoreEl.innerText = `XAL: ${Math.floor(state.score)}`;
+                speedEl.innerText = `${Math.floor(state.speed)} KM/H`;
+                speedEl.style.color = state.speed > 150 ? 'red' : 'white';
+                let percentage = (state.speed / MAX_SPEED) * 100;
+                speedFill.style.width = `${percentage}%`;
+            }
+
+            function gameOver(wasHeadOn) {
+                state.running = false;
+                container.classList.add('shake');
+                
+                if (state.score > state.highScore) {
+                    state.highScore = state.score;
+                    localStorage.setItem('trafficRiderHigh', state.highScore);
+                    highScoreEl.innerText = `REKORD: ${Math.floor(state.highScore)}`;
+                }
+
+                document.getElementById('end-score').innerText = Math.floor(state.score);
+                document.getElementById('end-speed').innerText = Math.floor(state.speed);
+                document.getElementById('end-high').innerText = Math.floor(state.highScore);
+                
+                let msg = wasHeadOn ? "DƏHŞƏTLİ QƏZA!" : "SÜRTÜNMƏ!";
+                document.querySelector('#game-over-screen h1').innerText = msg;
+
+                setTimeout(() => {
+                    gameOverScreen.style.display = 'flex';
+                }, 500);
+            }
+
+            // Başlanğıc ekranı
+            gameOverScreen.style.display = 'flex';
+            document.querySelector('#game-over-screen h1').innerText = "MOBİL YARIŞ OYUNU";
+            document.getElementById('restart-btn').innerText = "OYUNA BAŞLA";
+            document.getElementById('end-speed').parentElement.style.display = 'none';
+            document.getElementById('end-score').parentElement.style.display = 'none';
+
+        });
+    </script>
+</body>
+</html>
